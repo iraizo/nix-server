@@ -1,5 +1,21 @@
-{ config, pkgs, imports, ... }:
+{ config, pkgs, imports, inputs, ... }:
+
 
 {
-  # Various options that are specific for this user.
+  imports = [ inputs.neovim-flake.homeManagerModules.default ];
+  home.stateVersion = "23.11";
+
+  programs.neovim-flake = {
+	enable = true;
+
+    settings = {
+        vim = {
+            theme = {
+                enable = true;
+                name = "catppuccin";
+                style = "mocha";
+            };
+        };
+    };
+  };
 }
