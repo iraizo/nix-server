@@ -2,7 +2,7 @@
 # your system.  Help is available in the configuration.nix(5) man page
 # and in the NixOS manual (accessible by running `nixos-help`).
 
-{ config, pkgs, ... }:
+{ inputs, config, pkgs, ... }:
 
 {
   imports =
@@ -12,63 +12,42 @@
   
   nix.settings.extra-experimental-features = [ "flakes" "nix-command" ];
 
+  # time to get ipv6 working
+  security.wrappers.traceroute = {
+    owner = "root";
+    group = "root";
+    capabilities = "cap_net_raw=eip";
+    source = "${pkgs.traceroute.out}/bin/traceroute";
+  };
+
   # Use the systemd-boot EFI boot loader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
   
   networking.hostName = "nixos-homeserver"; # Define your hostname.
-  # Pick only one of the below networking options.
-  # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
   networking.networkmanager.enable = true;  # Easiest to use and most distros use this by default.
 
   # Set your time zone.
   time.timeZone = "Europe/Berlin";
-
-  # Configure network proxy if necessary
-  # networking.proxy.default = "http://user:password@proxy:port/";
-  # networking.proxy.noProxy = "127.0.0.1,localhost,internal.domain";
-
-  # Select internationalisation properties.
-  # i18n.defaultLocale = "en_US.UTF-8";
-  # console = {
-  #   font = "Lat2-Terminus16";
-  #   keyMap = "us";
-  #   useXkbConfig = true; # use xkbOptions in tty.
-  # };
-
-  # Enable the X11 windowing system.
-  # services.xserver.enable = true;
-
-
-
-
-  # Configure keymap in X11
-  # services.xserver.layout = "us";
-  # services.xserver.xkbOptions = "eurosign:e,caps:escape";
-
-  # Enable CUPS to print documents.
-  # services.printing.enable = true;
-
-  # Enable sound.
-  # sound.enable = true;
-  # hardware.pulseaudio.enable = true;
-
-  # Enable touchpad support (enabled default in most desktopManager).
-  # services.xserver.libinput.enable = true;
-
   # Define a user account. Don't forget to set a password with ‘passwd’.
   users.users.raizo = {
     isNormalUser = true;
-    extraGroups = [ "wheel" ]; # Enable ‘sudo’ for the user.
+    extraGroups = [ "wheel" "docker" ]; # Enable ‘sudo’ for the user.
     packages = with pkgs; [];
     openssh.authorizedKeys.keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPu4/uGwtSL6MMdcneGnneF3mVli/2I+bbIrkydrg6+9 admin@raizo.dev"];
+    shell = pkgs.fish;
   };
+
+  # fish shell
+  programs.fish.enable = true;
 
   # List packages installed in system profile. To search, run:
   # $ nix search wget
   environment.systemPackages = with pkgs; [
     vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
     wget
+    traceroute
+    git
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
@@ -84,8 +63,72 @@
   # Enable the OpenSSH daemon.
   services.openssh.enable = true;
 
+  # password manager
+  services.vaultwarden.enable = false;
+  services.vaultwarden.config = {
+	DOMAIN = "https://vault.raizo.dev";
+	SIGNUPS_ALLOWED = true;
+	ROCKET_ADDRESS = "127.0.0.1";
+  	ROCKET_PORT = 8222;
+	ROCKET_LOG = "critical";
+  };
+    
+  # grafana dashboard
+  services.grafana = { 
+        enable = true;
+        settings = {
+            server = {
+                http_addr = "127.0.0.1";
+                http_port = 80;
+            };
+        };
+  };
+
+
+  services.caddy.enable = false;
+  services.caddy.virtualHosts."http://vault.raizo.dev" = {
+	extraConfig = ''
+		encode gzip
+		reverse_proxy 127.0.0.1:8222 {
+			header_up X-Real-IP {remote_host}
+		}
+	'';
+  };
+
+  # media server
+  services.jellyfin.enable = true;
+
+  # vpn 
+  services.mullvad-vpn.enable = true;
+
+  # torrenting
+  services.aria2.enable = true;
+  services.aria2.extraArguments = "--interface=wg-mullvad";
+
+  services.sonarr.enable = true;
+  services.radarr.enable = true;
+  services.prowlarr.enable = true;
+
+  # other media
+  services.vsftpd = {
+    enable = true;
+    writeEnable = true;
+    localUsers = true;
+    userlist = ["raizo"];
+    userlistEnable = true;
+    localRoot = "/media/hdd/";
+
+    extraConfig = ''
+        pasv_enable=Yes
+        pasv_min_port=5000
+        pasv_max_port=5005
+    '';
+  };
+
+ 
   # Open ports in the firewall.
-  # networking.firewall.allowedTCPPorts = [ ... ];
+  networking.firewall.allowedTCPPorts = [80 8096 8989 7878 21];
+  networking.firewall.allowedTCPPortRanges = [{ from = 5000; to = 5005; }];
   # networking.firewall.allowedUDPPorts = [ ... ];
   # Or disable the firewall altogether.
   # networking.firewall.enable = false;
